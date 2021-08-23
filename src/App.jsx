@@ -40,16 +40,33 @@ function createDom(fiber) {
   return dom;
 }
 
+function commitRoot() {
+  commitWork(wipRoot.child);
+  wipRoot = null;
+}
+
+function commitWork(fiber) {
+  if (!fiber) {
+    return;
+  }
+  const domParent = fiber.parent.dom;
+  domParent.appendChild(fiber.dom);
+  commitWork(fiber.child);
+  commitWork(fiber.sibling);
+}
+
 function render(element, container) {
-  nextUnitOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [element],
     },
   };
+  nextUnitOfWork = wipRoot;
 }
 
 let nextUnitOfWork = null;
+let wipRoot = null;
 
 function workLoop(deadline) {
   let shouldYield = false;
@@ -57,6 +74,11 @@ function workLoop(deadline) {
     nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
   }
+
+  if (!nextUnitOfWork && wipRoot) {
+    commitRoot();
+  }
+
   requestIdleCallback(workLoop);
 }
 requestIdleCallback(workLoop);
@@ -65,13 +87,11 @@ function performUnitOfWork(fiber) {
   if (!fiber.dom) {
     fiber.dom = createDom(fiber);
   }
-  if (fiber.parent) {
-    fiber.parent.dom.appendChild(fiber.dom);
-  }
-
   const elements = fiber.props.children;
   let index = 0;
   let prevSibling = null;
+
+  // 자식 파이버 생성 및 연결
   while (index < elements.length) {
     const element = elements[index];
     const newFiber = {
@@ -80,6 +100,7 @@ function performUnitOfWork(fiber) {
       parent: fiber,
       dom: null,
     };
+
     if (index === 0) {
       fiber.child = newFiber;
     } else {
@@ -88,6 +109,7 @@ function performUnitOfWork(fiber) {
     prevSibling = newFiber;
     index++;
   }
+
   if (fiber.child) {
     return fiber.child;
   }
@@ -104,12 +126,12 @@ export const Didact = {
   createElement,
   render,
 };
-// /** @jsx Didact.createElement */
-const element = Didact.createElement(
-  "div",
-  { id: "foo" },
-  Didact.createElement("a", null, "bar"),
-  Didact.createElement("b")
+/** @jsx Didact.createElement */
+const element = (
+  <div id="foo">
+    <a>bar</a>
+    <b></b>
+  </div>
 );
 
 export default element;
