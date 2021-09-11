@@ -1,3 +1,4 @@
-import element, { Didact } from "./src/App";
+import App, { Didact } from "./src/App";
 
-Didact.render(element, document.getElementById("root"));
+/** @jsx Didact.createElement */
+Didact.render(<App name="foo"/>, document.getElementById("root"));

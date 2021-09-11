@@ -98,11 +98,21 @@ function commitRoot() {
 }
 
 function commitWork(fiber) {
+  // 더 이상 자식 요소가 없으면 종료
   if (!fiber) {
     return;
   }
-  const domParent = fiber.parent.dom;
-  // effectTag별 처리
+  // 함수형 컴포넌트가 존재하기 전엔 type 유형이 "TEXT_ELEMENT" 또는 div, span 등등의 형태였다면
+  // 함수형 컴포넌트에서는 createElement에서 type유형에 function이 들어가게 된다.
+  // 그래서 따로 createDom에대한 작업이 없고, 해당 function component에 dom이 없다.
+  // 위 상황을 고려해 부모 파이버의 돔이 존재하지 않을수 있기 때문에 DOM노드가 존재하는 가장 가까운 
+  // 직계 조상파이버를 찾는다. 
+  let domParentFiber = fiber.parent
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent
+  }
+  const domParent = domParentFiber.dom  
+  // effectTag별  처리
   // PLACEMENT == 생성, UPDATE == 수정, DELETION == 삭제
   if (
     fiber.effectTag === "PLACEMENT" &&
@@ -119,11 +129,21 @@ function commitWork(fiber) {
       fiber.props
     )
   } else if (fiber.effectTag === "DELETION") {
-    domParent.removeChild(fiber.dom)
+    commitDeletion(fiber, domParent)
   }
   commitWork(fiber.child);
   commitWork(fiber.sibling);
 }
+
+// 위의 부모 파이버의 DOM을 찾는 이유와 같음으로, DOM노드가 존재하지 않는 파이버를 위한 처리
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.child, domParent)
+  }
+}
+
 
 function render(element, container) {
   wipRoot = {
@@ -159,11 +179,12 @@ requestIdleCallback(workLoop);
 
 // 작업 단위별 수행 기능에서 새로운 파이버 생성 로직 분리
 function performUnitOfWork(fiber) {
-  if (!fiber.dom) {
-    fiber.dom = createDom(fiber);
+  const isFunctionComponent = fiber.type instanceof Function
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber)
+  } else {
+    updateHostComponent(fiber)
   }
-  const elements = fiber.props.children
-  reconcileChildren(fiber, elements)
 
   if (fiber.child) {
     return fiber.child;
@@ -175,6 +196,21 @@ function performUnitOfWork(fiber) {
     }
     nextFiber = nextFiber.parent;
   }
+}
+
+// 함수형 컴포넌트시 업데이트 방식
+// 기존과 차이는 돔을 바로 생성하지 않고 
+function updateFunctionComponent(fiber){
+  const children = [fiber.type(fiber.props)] // 인자로 받은 props 전체를 넘김
+  reconcileChildren(fiber, children)
+}
+
+// 기존 컴포넌트 업데이트 방식
+function updateHostComponent(fiber){
+  if (!fiber.dom){
+    fiber.dom = createDom(fiber)
+  }
+  reconcileChildren(fiber, fiber.props.children)
 }
 
 function reconcileChildren(wipFiber, elements){
@@ -235,11 +271,10 @@ export const Didact = {
 };
 
 /** @jsx Didact.createElement */
-const element = (
-  <div id="foo">
-    <a>bar</a>
-    <b></b>
-  </div>
-);
-
-export default element;
+export default function App(props){
+  return (
+    <div>
+      <h1>Hi {props.name}</h1>
+    </div>
+  )
+}
